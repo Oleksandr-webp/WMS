@@ -1,0 +1,8 @@
+<div class="d-flex justify-content-center align-items-center vh-100">
+    @if (username) {
+        <h2 class="alert alert-info" id="message">Hi, {{ username }}.</h2>
+    } @else {
+        <h2 class="alert alert-info" id="message">Please log in to continue.</h2>
+    }
+    
+</div>
