@@ -2,15 +2,29 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WMS.Domain.Entities;
 using ControllerBasedApi.Models;
+using Microsoft.AspNetCore.Identity;
+using WMS.Application.DTO;
+using System.Security.Claims;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
+using System.IdentityModel.Tokens.Jwt;
+using Microsoft.AspNetCore.Authorization;
 
 [Route("api/[controller]")]
 [ApiController]
 public class UsersController : ControllerBase
 {
     private readonly DatabaseContext _context;
-    public UsersController(DatabaseContext context)
+    private readonly IPasswordHasher<User> _passwordHasher;
+    private readonly IConfiguration _configuration;
+    public UsersController(
+        DatabaseContext context,
+        IPasswordHasher<User> passwordHasher,
+        IConfiguration configuration)
     {
         _context = context;
+        _passwordHasher = passwordHasher;
+        _configuration = configuration;
     }
 
     // GET: api/User
@@ -23,11 +37,11 @@ public class UsersController : ControllerBase
     }
 
     // GET: api/User/5
-    [HttpGet("{id}")]
+    [HttpGet("id/{id}")]
     [EndpointSummary("Returns user by id")]
     [ProducesResponseType(typeof(User), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<User>> GetUser(long id)
+    public async Task<ActionResult<User>> GetUserById(long id)
     {
         var user = await _context.Users.FindAsync(id);
 
@@ -37,6 +51,79 @@ public class UsersController : ControllerBase
         }
 
         return user;
+    }
+
+    // POST: api/User/login
+    [HttpPost("login")]
+    [EndpointSummary("Checks user username and password")]
+    [ProducesResponseType(typeof(User), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<User>> Login(RegisterUserDto dto)
+    {
+        var user = await _context.Users.FirstOrDefaultAsync(x => x.Username == dto.Username);
+
+        if (user == null)
+            return Problem(
+                title: "Invalid credentials",
+                detail: "Wrong username or password",
+                statusCode: StatusCodes.Status401Unauthorized
+                );
+
+        var result = _passwordHasher.VerifyHashedPassword(
+            user,
+            user.Password,
+            dto.Password);
+
+        if (result == PasswordVerificationResult.Failed)
+            return Problem(
+                title: "Invalid credentials",
+                detail: "Wrong username or password",
+                statusCode: StatusCodes.Status401Unauthorized
+                );
+
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new Claim(ClaimTypes.Name, user.Username),
+            new Claim(ClaimTypes.Role, user.Role.ToString())
+        };
+
+        var key = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
+
+        var credentials = new SigningCredentials(
+            key,
+            SecurityAlgorithms.HmacSha256);
+
+        var token = new JwtSecurityToken(
+            issuer: _configuration["Jwt:Issuer"],
+            audience: _configuration["Jwt:Audience"],
+            claims: claims,
+            expires: DateTime.UtcNow.AddHours(2),
+            signingCredentials: credentials);
+
+        var jwt = new JwtSecurityTokenHandler().WriteToken(token);
+
+        return Ok(new
+        {
+            token = jwt
+        });
+    }
+
+    [Authorize]
+    [HttpGet("me")]
+    public IActionResult GetMe()
+    {
+        var id = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var username = User.FindFirstValue(ClaimTypes.Name);
+        var role = User.FindFirstValue(ClaimTypes.Role);
+
+        return Ok(new
+        {
+            Id = id,
+            Username = username,
+            Role = role
+        });
     }
 
     // PUT: api/User/5
@@ -69,13 +156,37 @@ public class UsersController : ControllerBase
     [EndpointSummary("Inserts user into database")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<User>> PostUser(User user)
+    public async Task<ActionResult<User>> PostUser(RegisterUserDto dto)
     {
+        var existingUser = await _context.Users.FirstOrDefaultAsync(x => x.Username == dto.Username);
+
+        if (existingUser != null)
+            return Problem(
+                title: "Username already exists",
+                detail: "Username already exists.",
+                statusCode: StatusCodes.Status409Conflict);
+
+        var user = new User
+        {
+            Username = dto.Username
+        };
+
+        user.Password = _passwordHasher.HashPassword(
+            user,
+            dto.Password);
+
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
+        return CreatedAtAction(
+            nameof(GetUserById),
+            new { id = user.Id },
+            new
+            {
+                user.Id,
+                user.Username,
+                user.Role
+            });
     }
 
     // DELETE: api/User/5
