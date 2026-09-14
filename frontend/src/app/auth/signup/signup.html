@@ -1,0 +1,35 @@
+<div class="d-flex justify-content-center align-items-center vh-100">
+    <form class="w-100" style="max-width: 400px;" (ngSubmit)="signup()">
+
+        <h2 class="text-center mb-4">Sign Up</h2>
+
+        <div class="mb-3">
+            <label for="username" class="form-label">Username</label>
+            <input type="text" class="form-control" id="username" [(ngModel)]="username" name="username" required>
+        </div>
+
+        <div class="mb-3">
+            <label for="password" class="form-label">Password</label>
+            <input type="password" class="form-control" id="password" [(ngModel)]="password" name="password" required>
+        </div>
+
+        <div class="mb-3">
+            <p class="text-center"><a routerLink="/login">Log In</a></p>
+        </div>
+
+        @if (errorMessage()) {
+            <div class="alert alert-danger text-center">
+                {{ errorMessage() }}
+            </div>
+        } @else if (infoMessage()) {
+            <div class="alert alert-info text-center">
+                {{ infoMessage() }}
+            </div>
+        }
+
+        <button type="submit" class="btn btn-primary w-100">
+            Sign Up
+        </button>
+
+    </form>
+</div>

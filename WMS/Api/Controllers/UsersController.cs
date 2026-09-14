@@ -27,15 +27,6 @@ public class UsersController : ControllerBase
         _configuration = configuration;
     }
 
-    // GET: api/User
-    [HttpGet]
-    [EndpointSummary("Returns all users")]
-    [ProducesResponseType(typeof(IEnumerable<User>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<IEnumerable<User>>> GetUsers()
-    {
-        return await _context.Users.ToListAsync();
-    }
-
     // GET: api/User/5
     [HttpGet("id/{id}")]
     [EndpointSummary("Returns user by id")]
@@ -51,6 +42,22 @@ public class UsersController : ControllerBase
         }
 
         return user;
+    }
+
+    [Authorize]
+    [HttpGet("me")]
+    public IActionResult GetMe()
+    {
+        var id = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var username = User.FindFirstValue(ClaimTypes.Name);
+        var role = User.FindFirstValue(ClaimTypes.Role);
+
+        return Ok(new
+        {
+            Id = id,
+            Username = username,
+            Role = role
+        });
     }
 
     // POST: api/User/login
@@ -84,7 +91,7 @@ public class UsersController : ControllerBase
         var claims = new[]
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new Claim(ClaimTypes.Name, user.Username),
+            new Claim("username", user.Username),
             new Claim(ClaimTypes.Role, user.Role.ToString())
         };
 
@@ -110,49 +117,8 @@ public class UsersController : ControllerBase
         });
     }
 
-    [Authorize]
-    [HttpGet("me")]
-    public IActionResult GetMe()
-    {
-        var id = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        var username = User.FindFirstValue(ClaimTypes.Name);
-        var role = User.FindFirstValue(ClaimTypes.Role);
-
-        return Ok(new
-        {
-            Id = id,
-            Username = username,
-            Role = role
-        });
-    }
-
-    // PUT: api/User/5
-    [HttpPut("{id}")]
-    [EndpointSummary("Updates user in database")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> PutUser(long id, User user)
-    {
-        if (id != user.Id)
-            return BadRequest(":");
-
-        _context.Entry(user).State = EntityState.Modified;
-
-        try
-        {
-            await _context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException) when ((!UserExists(user.Id)))
-        {
-            return NotFound();
-        }
-
-        return NoContent();
-    }
-
     // POST: api/User
-    [HttpPost]
+    [HttpPost("signup")]
     [EndpointSummary("Inserts user into database")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
@@ -206,10 +172,5 @@ public class UsersController : ControllerBase
         await _context.SaveChangesAsync();
 
         return NoContent();
-    }
-
-    private bool UserExists(long? id)
-    {
-        return _context.Users.Any(e => e.Id == id);
     }
 }
